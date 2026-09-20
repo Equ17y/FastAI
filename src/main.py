@@ -3,17 +3,17 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI()
 
 
 class UserResponse(BaseModel):
-    id: int
-    email: str
-    username: str
-    registrated_at: str
-    is_active: bool
+    id: int = Field(description="Уникальный идентификатор пользователя")
+    email: str = Field(description="Электронная почта пользователя")
+    username: str = Field(description="Имя пользователя (логин)")
+    registrated_at: str = Field(description="Дата и время регистрации")
+    is_active: bool = Field(description="Статус активности аккаунта")
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -41,6 +41,3 @@ async def read_root():
 
 
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static")
-
-
-# Тестирование pre-commit хука
