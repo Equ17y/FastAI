@@ -13,6 +13,10 @@ class DeepSeekSettings(BaseSettings):
         description="Название модели DeepSeek",
     )
     max_connections: PositiveInt | None = None
+    timeout: PositiveInt = Field(
+        default=30,
+        description="Таймаут соединения с DeepSeek в секундах",
+    )
 
     model_config = SettingsConfigDict(extra="forbid")
 

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mercedes Premium Autos</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            scroll-behavior: smooth;
+            overflow-x: hidden;
+        }
+        header {
+            height: 100vh;
+            background-image: url('https://images.unsplash.com/photo-1541899481282-d53bffe3c35d');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            position: relative;
+        }
+        header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        header h1 {
+            font-size: 4rem;
+            animation: fadeIn 2s ease-in-out;
+            z-index: 1;
+        }
+        .parallax {
+            background-image: url('https://images.unsplash.com/photo-1541899481282-d53bffe3c35d');
+            height: 400px;
+            background-attachment: fixed;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+            position: relative;
+            margin: 40px 0;
+        }
+        .content {
+            padding: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .models {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+            margin: 40px 0;
+        }
+        .model-card {
+            border: 1px solid #ccc;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .model-card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        }
+        .model-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        .top-cars {
+            margin: 60px 0;
+        }
+        .top-cars h2 {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 40px;
+            color: #333;
+        }
+        .top-cars .car-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+        }
+        .car-details .car-item {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+        .car-details .car-item:hover {
+            transform: translateY(-10px);
+        }
+        .car-details .car-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        .car-details .car-item h3 {
+            margin: 20px 0 10px;
+        }
+        .car-details .car-item p {
+            color: #666;
+        }
+        footer {
+            background-color: #111;
+            color: white;
+            text-align: center;
+            padding: 30px;
+            margin-top: 60px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 3rem;
+            }
+            .models, .car-details {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Mercedes Premium Autos</h1>
+    </header>
+
+    <div class="content">
+        <h2>О Нас</h2>
+        <p>Добро пожаловать в официальный магазин Mercedes 2026 года. Мы предлагаем лучшие автомобили класса люкс, которые сочетают в себе передовые технологии и непревзойденный дизайн.</p>
+
+        <h2>Каталог Моделей</h2>
+        <div class="models">
+            <div class="model-card">
+                <img src="https://images.unsplash.com/photo-1555215695-3004980ad54e" alt="Mercedes S-Class">
+                <h3>Mercedes-Benz S-Class 2026</h3>
+                <p>Цена: $160,000</p>
+            </div>
+            <div class="model-card">
+                <img src="https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8" alt="Mercedes E-Class">
+                <h3>Mercedes-Benz E-Class 2026</h3>
+                <p>Цена: $110,000</p>
+            </div>
+            <div class="model-card">
+                <img src="https://images.unsplash.com/photo-1599912027806-cfec9f5944b6" alt="Mercedes C-Class">
+                <h3>Mercedes-Benz C-Class 2026</h3>
+                <p>Цена: $85,000</p>
+            </div>
+        </div>
+
+        <div class="top-cars">
+            <h2>Топ Три Автомобиля 2026</h2>
+            <div class="car-details">
+                <div class="car-item">
+                    <img src="https://images.unsplash.com/photo-1555215695-3004980ad54e" alt="Top Car 1">
+                    <h3>Mercedes-Benz S-Class</h3>
+                    <p>Новый S-Class сочетает роскошь с инновациями. Оснащен системой автономного вождения 4-го уровня и ультрасовременным интерьером.</p>
+                </div>
+                <div class="car-item">
+                    <img src="https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8" alt="Top Car 2">
+                    <h3>Mercedes-Benz E-Class</h3>
+                    <p>E-Class 2026 предлагает просторный салон, гибридные силовые установки и революционную информационно-развлекательную систему.</p>
+                </div>
+                <div class="car-item">
+                    <img src="https://images.unsplash.com/photo-1599912027806-cfec9f5944b6" alt="Top Car 3">
+                    <h3>Mercedes-Benz C-Class</h3>
+                    <p>Компактный представитель класса с спортивным характером. Новые технологии безопасности делают его идеальным для города.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="parallax"></div>
+
+    <footer>
+        <p>&copy; 2026 Mercedes Premium Autos. Все права защищены.</p>
+    </footer>
+</body>
+</html>

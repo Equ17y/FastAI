@@ -1,24 +1,54 @@
 import asyncio
 import json
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, Path as FastAPIPath
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Path as FastAPIPath, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from html_page_generator import AsyncDeepseekClient, AsyncPageGenerator, AsyncUnsplashClient
 from pydantic import BaseModel, Field
 
 from env_settings import settings
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Инициализация и завершение работы клиентов при старте/остановке приложения."""
+
+    print("\n=== Инициализация клиентов API ===")
+
+    ds_key = settings.deepseek.api_key.get_secret_value()
+    ds_base_url = settings.deepseek.base_url
+    ds_model = settings.deepseek.model
+    ds_timeout = settings.deepseek.timeout
+
+    us_key = settings.unsplash.api_key.get_secret_value()
+    us_timeout = settings.unsplash.timeout
+
+    async with AsyncExitStack() as stack:
+        app.state.unsplash_client = await stack.enter_async_context(
+            AsyncUnsplashClient.setup(us_key, timeout=us_timeout),
+        )
+        app.state.deepseek_client = await stack.enter_async_context(
+            AsyncDeepseekClient.setup(ds_key, ds_base_url, ds_model, timeout=ds_timeout),
+        )
+
+        print("✅ Клиенты DeepSeek и Unsplash успешно инициализированы!")
+        print("===========================\n")
+
+        # Выводим настройки
+        print("=== APP SETTINGS (JSON) ===")
+        print(json.dumps(settings.model_dump(mode="json"), indent=2, ensure_ascii=False))
+        print("===========================\n")
+
+        yield
+
+    print("\n=== Завершение работы клиентов API ===")
 
 
-@app.on_event("startup")
-async def startup_event():
-    print("\n=== APP SETTINGS (JSON) ===")
-    print(json.dumps(settings.model_dump(mode="json"), indent=2, ensure_ascii=False))
-    print("===========================\n")
-
+app = FastAPI(lifespan=lifespan)
 
 SiteTitle = Annotated[str, Field(min_length=1, max_length=100, description="Название сайта")]
 
@@ -45,7 +75,7 @@ class SiteDetailResponse(BaseModel):
     view_html_url: str = Field(description="Ссылка на просмотр сайта")
     download_html_url: str = Field(description="Ссылка на скачивание HTML")
     screenshot_url: str = Field(description="Ссылка на скриншот сайта")
-    htmlCodeUrl: str = Field(description="URL HTML-кода для iframe (camelCase для фронтенда)")
+    htmlCodeUrl: str = Field(description="URL HTML-кода для iframe")
 
 
 class SitesListResponse(BaseModel):
@@ -119,71 +149,73 @@ async def get_site(
 
 @app.get("/sites/{site_id}/view", tags=["Sites"])
 async def view_site(site_id: int = FastAPIPath(description="ID сайта", ge=1)):
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Сгенерированный сайт #{site_id}</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                padding: 40px; background: #f5f5f5;
-                }}
-            .container {{
-                max-width: 800px;
-                margin: 0 auto;
-                background: white;
-                padding: 30px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }}
-            h1 {{ color: #333; }}
-            p {{ color: #666; line-height: 1.6; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Сгенерированный сайт #{site_id}</h1>
-            <p>Это мок-ответ для демонстрации работы генератора сайтов FastAI.</p>
-            <p>Здесь должен отображаться HTML-код, сгенерированный нейросетью.</p>
-        </div>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+    return FileResponse("index.html")
 
 
 @app.get("/sites/{site_id}/download", tags=["Sites"])
 async def download_site(site_id: int = FastAPIPath(description="ID сайта", ge=1)):
-    html_content = f"""<!DOCTYPE html>
-<html><head><title>Site {site_id}</title></head>
-<body><h1>Generated Site #{site_id}</h1><p>Mock HTML for download.</p></body>
-</html>"""
-    return HTMLResponse(
-        content=html_content,
+    return FileResponse(
+        "index.html",
         media_type="text/html",
-        headers={"Content-Disposition": f"attachment; filename=site_{site_id}.html"},
+        headers={"Content-Disposition": "attachment; filename=index.html"},
     )
+
+
+async def stream_html_generation(prompt: str, request: Request):
+    """Отдельная функция для снижения сложности (C901) и генерации HTML."""
+    async with (
+        AsyncUnsplashClient.setup(
+            settings.unsplash.api_key.get_secret_value(),
+            timeout=settings.unsplash.timeout,
+        ),
+        AsyncDeepseekClient.setup(
+            settings.deepseek.api_key.get_secret_value(),
+            settings.deepseek.base_url,
+            settings.deepseek.model,
+            timeout=settings.deepseek.timeout,
+        ),
+    ):
+        generator = AsyncPageGenerator(debug_mode=False)
+
+        async for chunk in generator(prompt):
+            # STORY-510: Проверка отключения клиента
+            if await request.is_disconnected():
+                print("\n⚠️ Клиент отключился. Генерация остановлена.")
+                break
+
+            if isinstance(chunk, bytes):
+                yield chunk
+            elif isinstance(chunk, str):
+                yield chunk.encode()  # ruff уже убрал отсюда "utf-8"
+            else:
+                yield str(chunk).encode()
+
+        # Сохранение файла
+        output_file = Path("index.html")
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(generator.html_page.html_code)
+
+        yield f"\n\n<!-- Сайт успешно сгенерирован и сохранен в {output_file} -->".encode()
 
 
 @app.post("/sites/{site_id}/generate", tags=["Sites"])
 async def generate_site_streaming(
+    request: Request,
     site_id: int = FastAPIPath(description="ID сайта", ge=1),
-    request: GenerateRequest = None,
+    req_body: GenerateRequest = None,
 ):
+    prompt = req_body.prompt if req_body and req_body.prompt else "Современный одностраничный сайт"
+
     async def html_stream():
-        chunks = [
-            b"<html><head><title>Generating...</title></head><body>",
-            b"<h1>Starting site generation...</h1>",
-            b"<p>Loading resources...</p>",
-            b"<p>Applying styles...</p>",
-            b"<h2 style='color: green;'>Site generated successfully!</h2>",
-            b"<p>Mock response for StreamingResponse test.</p>",
-            b"</body></html>",
-        ]
-        for chunk in chunks:
-            yield chunk
-            await asyncio.sleep(0.5)
+        try:
+            async for chunk in stream_html_generation(prompt, request):
+                yield chunk
+        except asyncio.CancelledError:
+            print("\n⚠️ Генерация отменена (CancelScope сработал корректно).")
+        except Exception as e:
+            import traceback
+            error_msg = f"\n\nОшибка генерации: {type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
+            yield error_msg.encode()
 
     return StreamingResponse(html_stream(), media_type="text/html")
 
