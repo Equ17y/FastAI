@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -7,7 +8,16 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from env_settings import settings
+
 app = FastAPI()
+
+
+@app.on_event("startup")
+async def startup_event():
+    print("\n=== APP SETTINGS (JSON) ===")
+    print(json.dumps(settings.model_dump(mode="json"), indent=2, ensure_ascii=False))
+    print("===========================\n")
 
 
 SiteTitle = Annotated[str, Field(min_length=1, max_length=100, description="Название сайта")]
