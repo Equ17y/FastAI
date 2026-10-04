@@ -15,13 +15,16 @@ async def main():
     deepseek_model = settings.deepseek.model
     unsplash_key = settings.unsplash.api_key.get_secret_value()
 
-    print(f"🔗 DeepSeek Base URL: {deepseek_base_url}")
-    print(f"🤖 DeepSeek Model: {deepseek_model}")
+    print(f"DeepSeek Base URL: {deepseek_base_url}")
+    print(f"DeepSeek Model: {deepseek_model}")
 
-    prompt = "Сделай современный одностраничный сайт (лендинг) для уютной кофейни с названием 'Morning Brew'. Добавь красивые фотографии кофе и интерьера."
+    prompt = (
+        "Сделай современный одностраничный сайт (лендинг) для уютной кофейни "
+        "с названием 'Morning Brew'. Добавь красивые фотографии кофе и интерьера."
+    )
 
-    print(f"\n📝 Отправляем промпт:\n{prompt}\n")
-    print("⏳ Начинается генерация (это может занять 10-40 секунд)...\n")
+    print(f"\nОтправляем промпт:\n{prompt}\n")
+    print("Начинается генерация (это может занять 10-40 секунд)...\n")
 
     try:
         async with (
@@ -47,14 +50,14 @@ async def main():
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(generator.html_page.html_code)
 
-            print(f"\n\n✅ Генерация завершена успешно!")
-            print(f"💾 Файл сохранен: {output_file.absolute()}")
+            print("\n\nГенерация завершена успешно!")
+            print(f"Файл сохранен: {output_file.absolute()}")
 
-            print("🌐 Открываю сайт в браузере...")
+            print("Открываю сайт в браузере...")
             webbrowser.open(output_file.absolute().as_uri())
 
     except Exception as e:
-        print(f"\n❌ Произошла ошибка при генерации: {e}")
+        print(f"\nПроизошла ошибка при генерации: {e}")
 
 
 if __name__ == "__main__":

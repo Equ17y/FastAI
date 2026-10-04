@@ -29,11 +29,21 @@ class UnsplashSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="forbid")
 
 
+class AWSSettings(BaseSettings):
+    access_key: SecretStr
+    secret_key: SecretStr
+    endpoint_url: str
+    bucket_name: str
+
+    model_config = SettingsConfigDict(extra="forbid")
+
+
 class Settings(BaseSettings):
     debug: bool = False
     secret_key: str = "default-secret-key"
     deepseek: DeepSeekSettings | None = None
     unsplash: UnsplashSettings | None = None
+    aws: AWSSettings | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

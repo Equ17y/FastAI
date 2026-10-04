@@ -214,6 +214,7 @@ async def generate_site_streaming(
             print("\n⚠️ Генерация отменена (CancelScope сработал корректно).")
         except Exception as e:
             import traceback
+
             error_msg = f"\n\nОшибка генерации: {type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
             yield error_msg.encode()
 
