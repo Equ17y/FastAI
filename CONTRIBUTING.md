@@ -93,6 +93,117 @@ git commit -m 'Message' --no-verify
 $ uv run fastapi dev src/main.py
 ```
 
+### Настройка локального S3-хранилища MinIO
+
+Для локальной разработки в качестве S3-хранилища используется MinIO.
+
+#### Установка MinIO
+
+Установите MinIO Server согласно инструкции для вашей операционной системы.
+
+После установки убедитесь, что команда MinIO доступна:
+
+```shell
+$ minio --version
+```
+
+#### Запуск MinIO
+
+Создайте директорию для хранения данных и запустите MinIO Server.
+
+Перед запуском задайте логин и пароль администратора:
+
+```shell
+$ export MINIO_ROOT_USER=minioadmin
+$ export MINIO_ROOT_PASSWORD=minioadmin123
+$ minio server ./minio-data --console-address ":9001"
+```
+
+Для Windows PowerShell:
+
+```powershell
+$env:MINIO_ROOT_USER="minioadmin"
+$env:MINIO_ROOT_PASSWORD="minioadmin123"
+minio server "D:\minio-data" --console-address ":9001"
+```
+
+После запуска MinIO выведет адреса сервисов:
+
+- S3 API: `http://127.0.0.1:9000`
+- Web UI: `http://127.0.0.1:9001`
+
+Откройте `http://127.0.0.1:9001` в браузере и авторизуйтесь с помощью значений `MINIO_ROOT_USER` и `MINIO_ROOT_PASSWORD`.
+
+#### Создание публичного бакета
+
+Создайте бакет `fastai-sites`.
+
+Для работы приложения бакет должен быть публично доступен для скачивания файлов.
+
+Установите MinIO Client (`mc`), настройте подключение к локальному MinIO и разрешите публичное скачивание:
+
+```shell
+$ mc alias set local http://127.0.0.1:9000 minioadmin minioadmin123
+$ mc anonymous set download local/fastai-sites
+$ mc anonymous get local/fastai-sites
+```
+
+Последняя команда должна показать:
+
+```text
+Access permission for 'local/fastai-sites' is 'download'
+```
+
+#### Первоначальная загрузка файлов
+
+Перед запуском приложения вручную загрузите через Web UI MinIO в бакет `fastai-sites` два файла:
+
+- `index.html` — HTML-разметка тестового сайта;
+- `index.png` — тестовый скриншот сайта.
+
+Эти файлы необходимы приложению: эндпоинты используют публичные ссылки на них. Если файлов нет в бакете, ссылки, возвращаемые бэкендом фронтенду, не будут работать.
+
+После загрузки проверьте публичные ссылки:
+
+```text
+http://127.0.0.1:9000/fastai-sites/index.html
+http://127.0.0.1:9000/fastai-sites/index.png
+```
+
+`index.html` должен открываться как веб-страница, а `index.png` — как изображение.
+
+#### Загрузка файлов из Python-кода
+
+При программной загрузке файлов в S3 обязательно указывайте `ContentDisposition=inline` и корректный MIME-тип.
+
+Для HTML:
+
+```text
+ContentDisposition=inline
+ContentType=text/html
+```
+
+Для PNG:
+
+```text
+ContentDisposition=inline
+ContentType=image/png
+```
+
+`ContentDisposition=inline` позволяет браузеру отображать файл непосредственно по публичной ссылке.
+
+Чтобы принудительно скачать публичный файл, добавьте к его URL GET-параметр:
+
+```text
+?response-content-disposition=attachment
+```
+
+Например:
+
+```text
+http://127.0.0.1:9000/fastai-sites/index.html?response-content-disposition=attachment
+```
+
 ## Как вести разработку
 
 Код проекта находится в папке `/src`.

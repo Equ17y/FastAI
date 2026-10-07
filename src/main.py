@@ -4,6 +4,8 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
+import aioboto3
+from botocore.config import Config
 from fastapi import FastAPI, Path as FastAPIPath, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +29,15 @@ async def lifespan(app: FastAPI):
     us_key = settings.unsplash.api_key.get_secret_value()
     us_timeout = settings.unsplash.timeout
 
+    s3_config = Config(
+        connect_timeout=settings.aws.connect_timeout,
+        read_timeout=settings.aws.read_timeout,
+        max_pool_connections=settings.aws.max_connections,
+    )
+
     async with AsyncExitStack() as stack:
+        app.state.generation_tasks = set()
+
         app.state.unsplash_client = await stack.enter_async_context(
             AsyncUnsplashClient.setup(us_key, timeout=us_timeout),
         )
@@ -35,7 +45,19 @@ async def lifespan(app: FastAPI):
             AsyncDeepseekClient.setup(ds_key, ds_base_url, ds_model, timeout=ds_timeout),
         )
 
-        print("✅ Клиенты DeepSeek и Unsplash успешно инициализированы!")
+        s3_session = aioboto3.Session()
+
+        app.state.s3_client = await stack.enter_async_context(
+            s3_session.client(
+                "s3",
+                endpoint_url=settings.aws.endpoint_url,
+                aws_access_key_id=settings.aws.access_key.get_secret_value(),
+                aws_secret_access_key=settings.aws.secret_key.get_secret_value(),
+                config=s3_config,
+            ),
+        )
+
+        print("✅ Клиенты DeepSeek, Unsplash и S3 успешно инициализированы!")
         print("===========================\n")
 
         # Выводим настройки
@@ -86,9 +108,35 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(description="Промпт для перегенерации")
 
 
-def get_mock_site(site_id: int, title: str = "Мой тестовый сайт", prompt: str = "Сделай красиво") -> dict:
-    view_url = f"http://127.0.0.1:8000/sites/{site_id}/view"
-    download_url = f"http://127.0.0.1:8000/sites/{site_id}/download"
+def get_s3_object_url(object_name: str) -> str:
+    endpoint_url = settings.aws.endpoint_url.rstrip("/")
+    return f"{endpoint_url}/{settings.aws.bucket_name}/{object_name}"
+
+
+def get_s3_download_url(object_name: str) -> str:
+    object_url = get_s3_object_url(object_name)
+    return f"{object_url}?response-content-disposition=attachment"
+
+
+async def upload_html_to_s3(s3_client, html_code: str) -> None:
+    await s3_client.put_object(
+        Bucket=settings.aws.bucket_name,
+        Key="index.html",
+        Body=html_code.encode("utf-8"),
+        ContentType="text/html",
+        ContentDisposition="inline",
+    )
+
+
+def get_mock_site(
+    site_id: int,
+    title: str = "Мой тестовый сайт",
+    prompt: str = "Сделай красиво",
+) -> dict:
+    view_url = get_s3_object_url("index.html")
+    download_url = get_s3_download_url("index.html")
+    screenshot_url = get_s3_object_url("index.png")
+
     return {
         "id": site_id,
         "title": title,
@@ -97,7 +145,7 @@ def get_mock_site(site_id: int, title: str = "Мой тестовый сайт",
         "updated_at": "2023-10-25T10:00:00Z",
         "view_html_url": view_url,
         "download_html_url": download_url,
-        "screenshot_url": "https://placehold.co/100x100/png",
+        "screenshot_url": screenshot_url,
         "htmlCodeUrl": view_url,
     }
 
@@ -131,11 +179,6 @@ async def get_my_sites():
                 title="Сайт про котиков",
                 prompt="Сайт с котиками",
             ),
-            get_mock_site(
-                site_id=2,
-                title="Мой блог",
-                prompt="Личный блог",
-            ),
         ],
     }
 
@@ -161,41 +204,49 @@ async def download_site(site_id: int = FastAPIPath(description="ID сайта", 
     )
 
 
-async def stream_html_generation(prompt: str, request: Request):
-    """Отдельная функция для снижения сложности (C901) и генерации HTML."""
-    async with (
-        AsyncUnsplashClient.setup(
-            settings.unsplash.api_key.get_secret_value(),
-            timeout=settings.unsplash.timeout,
-        ),
-        AsyncDeepseekClient.setup(
-            settings.deepseek.api_key.get_secret_value(),
-            settings.deepseek.base_url,
-            settings.deepseek.model,
-            timeout=settings.deepseek.timeout,
-        ),
-    ):
-        generator = AsyncPageGenerator(debug_mode=False)
+async def generate_html_in_background(
+    prompt: str,
+    app: FastAPI,
+    chunks_queue: asyncio.Queue,
+) -> None:
+    """Генерирует сайт независимо от HTTP-соединения и сохраняет HTML в S3."""
+    generator = AsyncPageGenerator(debug_mode=settings.debug)
 
+    try:
         async for chunk in generator(prompt):
-            # STORY-510: Проверка отключения клиента
-            if await request.is_disconnected():
-                print("\n⚠️ Клиент отключился. Генерация остановлена.")
-                break
-
             if isinstance(chunk, bytes):
-                yield chunk
+                chunk_bytes = chunk
             elif isinstance(chunk, str):
-                yield chunk.encode()  # ruff уже убрал отсюда "utf-8"
+                chunk_bytes = chunk.encode()
             else:
-                yield str(chunk).encode()
+                chunk_bytes = str(chunk).encode()
 
-        # Сохранение файла
-        output_file = Path("index.html")
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(generator.html_page.html_code)
+            await chunks_queue.put(chunk_bytes)
 
-        yield f"\n\n<!-- Сайт успешно сгенерирован и сохранен в {output_file} -->".encode()
+        html_code = generator.html_page.html_code
+
+        await upload_html_to_s3(
+            app.state.s3_client,
+            html_code,
+        )
+
+        print("\nГенерация завершена.")
+        print("index.html сохранён в S3.")
+
+        await chunks_queue.put(
+            b"\n\n<!-- Site successfully generated and saved to S3 -->",
+        )
+
+    except Exception as exc:
+        import traceback
+
+        error_msg = f"\n\nОшибка генерации: {type(exc).__name__}: {exc}\n\n{traceback.format_exc()}"
+
+        print(error_msg)
+        await chunks_queue.put(error_msg.encode())
+
+    finally:
+        await chunks_queue.put(None)
 
 
 @app.post("/sites/{site_id}/generate", tags=["Sites"])
@@ -206,19 +257,34 @@ async def generate_site_streaming(
 ):
     prompt = req_body.prompt if req_body and req_body.prompt else "Современный одностраничный сайт"
 
+    chunks_queue = asyncio.Queue()
+
+    generation_task = asyncio.create_task(
+        generate_html_in_background(
+            prompt=prompt,
+            app=request.app,
+            chunks_queue=chunks_queue,
+        ),
+    )
+
+    request.app.state.generation_tasks.add(generation_task)
+    generation_task.add_done_callback(
+        request.app.state.generation_tasks.discard,
+    )
+
     async def html_stream():
-        try:
-            async for chunk in stream_html_generation(prompt, request):
-                yield chunk
-        except asyncio.CancelledError:
-            print("\n⚠️ Генерация отменена (CancelScope сработал корректно).")
-        except Exception as e:
-            import traceback
+        while True:
+            chunk = await chunks_queue.get()
 
-            error_msg = f"\n\nОшибка генерации: {type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
-            yield error_msg.encode()
+            if chunk is None:
+                break
 
-    return StreamingResponse(html_stream(), media_type="text/html")
+            yield chunk
+
+    return StreamingResponse(
+        html_stream(),
+        media_type="text/html",
+    )
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent

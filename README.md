@@ -45,6 +45,42 @@
 | `UNSPLASH__API_KEY` | Access Key для поиска изображений в Unsplash | [Unsplash Developers](https://unsplash.com/developers) — создайте Demo App и скопируйте Access Key |
 | `UNSPLASH__MAX_CONNECTIONS` | Максимальное количество подключений к Unsplash | Целое положительное число (например, `5`) |
 | `UNSPLASH__TIMEOUT` | Таймаут запроса к Unsplash в секундах | Целое положительное число (например, `30`) |
+| `AWS__ENDPOINT_URL` | Адрес S3 API MinIO | Для локального MinIO: `http://127.0.0.1:9000` |
+| `AWS__ACCESS_KEY` | Логин для подключения к S3 | Для локального MinIO соответствует `MINIO_ROOT_USER` |
+| `AWS__SECRET_KEY` | Пароль для подключения к S3 | Для локального MinIO соответствует `MINIO_ROOT_PASSWORD` |
+| `AWS__BUCKET_NAME` | Название S3-бакета | Например, `fastai-sites` |
+| `AWS__CONNECT_TIMEOUT` | Таймаут подключения к S3 в секундах | Положительное целое число, например `5` |
+| `AWS__READ_TIMEOUT` | Таймаут чтения из S3 в секундах | Положительное целое число, например `30` |
+| `AWS__MAX_CONNECTIONS` | Максимальное количество одновременных подключений к S3 | Положительное целое число, например `10` |
+
+
+### Настройка S3
+
+Настройки S3 объединены в группу `AWS` и задаются в файле `.env`.
+
+Пример конфигурации для локального MinIO:
+
+```env
+AWS__ACCESS_KEY=minioadmin
+AWS__SECRET_KEY=minioadmin123
+AWS__ENDPOINT_URL=http://127.0.0.1:9000
+AWS__BUCKET_NAME=fastai-sites
+AWS__CONNECT_TIMEOUT=5
+AWS__READ_TIMEOUT=30
+AWS__MAX_CONNECTIONS=10
+```
+
+Все перечисленные настройки группы `AWS` обязательны.
+
+Для локального MinIO учётные данные соответствуют друг другу следующим образом:
+
+```text
+MINIO_ROOT_USER     == AWS__ACCESS_KEY
+MINIO_ROOT_PASSWORD == AWS__SECRET_KEY
+```
+
+API локального MinIO работает на порту `9000`. Веб-интерфейс MinIO работает отдельно на порту `9001`.
+
 
 ### Получение API-токенов:
 

@@ -34,6 +34,9 @@ class AWSSettings(BaseSettings):
     secret_key: SecretStr
     endpoint_url: str
     bucket_name: str
+    connect_timeout: PositiveInt
+    read_timeout: PositiveInt
+    max_connections: PositiveInt
 
     model_config = SettingsConfigDict(extra="forbid")
 
