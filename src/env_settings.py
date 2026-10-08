@@ -1,4 +1,6 @@
-from pydantic import Field, PositiveInt, SecretStr
+from typing import Literal
+
+from pydantic import Field, PositiveFloat, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,13 +43,24 @@ class AWSSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="forbid")
 
 
+class GotenbergSettings(BaseSettings):
+    api_url: str
+    screenshot_width: PositiveInt = 1280
+    image_format: Literal["png", "jpeg", "webp"] = "png"
+    max_connections: PositiveInt = 5
+    timeout: PositiveInt = 10
+    wait_delay: PositiveFloat = 8
+
+    model_config = SettingsConfigDict(extra="forbid")
+
+
 class Settings(BaseSettings):
     debug: bool = False
     secret_key: str = "default-secret-key"
     deepseek: DeepSeekSettings | None = None
     unsplash: UnsplashSettings | None = None
     aws: AWSSettings | None = None
-
+    gotenberg: GotenbergSettings | None = None
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

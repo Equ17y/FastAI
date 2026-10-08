@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Annotated
 
 import aioboto3
+import httpx
 from botocore.config import Config
 from fastapi import FastAPI, Path as FastAPIPath, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from gotenberg_api import ScreenshotHTMLRequest
 from html_page_generator import AsyncDeepseekClient, AsyncPageGenerator, AsyncUnsplashClient
 from pydantic import BaseModel, Field
 
@@ -57,7 +59,18 @@ async def lifespan(app: FastAPI):
             ),
         )
 
-        print("✅ Клиенты DeepSeek, Unsplash и S3 успешно инициализированы!")
+        app.state.gotenberg_client = await stack.enter_async_context(
+            httpx.AsyncClient(
+                base_url=settings.gotenberg.api_url,
+                timeout=httpx.Timeout(settings.gotenberg.timeout),
+                limits=httpx.Limits(
+                    max_connections=settings.gotenberg.max_connections,
+                    max_keepalive_connections=settings.gotenberg.max_connections,
+                ),
+            ),
+        )
+
+        print("Клиенты DeepSeek, Unsplash, S3 и Gotenberg успешно инициализированы!")
         print("===========================\n")
 
         # Выводим настройки
@@ -97,7 +110,11 @@ class SiteDetailResponse(BaseModel):
     view_html_url: str = Field(description="Ссылка на просмотр сайта")
     download_html_url: str = Field(description="Ссылка на скачивание HTML")
     screenshot_url: str = Field(description="Ссылка на скриншот сайта")
-    htmlCodeUrl: str = Field(description="URL HTML-кода для iframe")
+    htmlCodeUrl: str = Field(description="URL HTML для frontend")
+    htmlCodeDownloadUrl: str = Field(description="URL скачивания для frontend")
+    screenshotUrl: str = Field(description="URL скриншота для frontend")
+    createdAt: str = Field(description="Дата создания для frontend")
+    updatedAt: str = Field(description="Дата обновления для frontend")
 
 
 class SitesListResponse(BaseModel):
@@ -128,6 +145,16 @@ async def upload_html_to_s3(s3_client, html_code: str) -> None:
     )
 
 
+async def upload_screenshot_to_s3(s3_client, screenshot: bytes) -> None:
+    await s3_client.put_object(
+        Bucket=settings.aws.bucket_name,
+        Key="index.png",
+        Body=screenshot,
+        ContentType="image/png",
+        ContentDisposition="inline",
+    )
+
+
 def get_mock_site(
     site_id: int,
     title: str = "Мой тестовый сайт",
@@ -146,7 +173,12 @@ def get_mock_site(
         "view_html_url": view_url,
         "download_html_url": download_url,
         "screenshot_url": screenshot_url,
+        "urlPath": "",
         "htmlCodeUrl": view_url,
+        "htmlCodeDownloadUrl": download_url,
+        "screenshotUrl": screenshot_url,
+        "createdAt": "2023-10-25T10:00:00Z",
+        "updatedAt": "2023-10-25T10:00:00Z",
     }
 
 
@@ -229,9 +261,26 @@ async def generate_html_in_background(
             app.state.s3_client,
             html_code,
         )
-
-        print("\nГенерация завершена.")
         print("index.html сохранён в S3.")
+
+        screenshot_request = ScreenshotHTMLRequest(
+            index_html=html_code,
+            width=settings.gotenberg.screenshot_width,
+            format=settings.gotenberg.image_format,
+            wait_delay=settings.gotenberg.wait_delay,
+        )
+
+        screenshot = await screenshot_request.asend(
+            app.state.gotenberg_client,
+        )
+
+        await upload_screenshot_to_s3(
+            app.state.s3_client,
+            screenshot,
+        )
+
+        print("index.png сохранён в S3.")
+        print("\nГенерация сайта и скриншота завершена.")
 
         await chunks_queue.put(
             b"\n\n<!-- Site successfully generated and saved to S3 -->",
