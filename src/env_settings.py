@@ -56,7 +56,7 @@ class GotenbergSettings(BaseSettings):
 
 class Settings(BaseSettings):
     debug: bool = False
-    secret_key: str = "default-secret-key"
+    secret_key: SecretStr = SecretStr("default-secret-key")
     deepseek: DeepSeekSettings | None = None
     unsplash: UnsplashSettings | None = None
     aws: AWSSettings | None = None

@@ -8,3 +8,9 @@ tmp*
 .DS_Store
 
 frontend/
+
+# Локальные тестовые файлы
+/index.png
+/main_changes.txt
+
+/index-programspec-backup.html
