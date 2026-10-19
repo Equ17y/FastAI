@@ -8,7 +8,7 @@ dependencies = [
     "aioboto3>=15.5.0",
     "editorconfig-checker==3.2.1",
     "fastapi[standard]==0.115.12",
-    "gotenberg-api",
+    "gotenberg-api==0.1.0",
     "html-page-generator",
     "pre-commit>=4.3.0",
     "pydantic-settings>=2.15.0",
