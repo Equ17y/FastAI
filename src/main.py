@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -16,12 +17,13 @@ from pydantic import BaseModel, Field
 
 from env_settings import settings
 
+logger = logging.getLogger(__name__)
+GOTENBERG_MAX_ATTEMPTS = 3
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация и завершение работы клиентов при старте/остановке приложения."""
-
-    print("\n=== Инициализация клиентов API ===")
 
     ds_key = settings.deepseek.api_key.get_secret_value()
     ds_base_url = settings.deepseek.base_url
@@ -36,6 +38,10 @@ async def lifespan(app: FastAPI):
         read_timeout=settings.aws.read_timeout,
         max_pool_connections=settings.aws.max_connections,
     )
+
+    print("=== APP SETTINGS (JSON) ===")
+    print(json.dumps(settings.model_dump(mode="json"), indent=2, ensure_ascii=False))
+    print("===========================\n")
 
     async with AsyncExitStack() as stack:
         app.state.generation_tasks = set()
@@ -73,14 +79,11 @@ async def lifespan(app: FastAPI):
         print("Клиенты DeepSeek, Unsplash, S3 и Gotenberg успешно инициализированы!")
         print("===========================\n")
 
-        # Выводим настройки
-        print("=== APP SETTINGS (JSON) ===")
-        print(json.dumps(settings.model_dump(mode="json"), indent=2, ensure_ascii=False))
-        print("===========================\n")
+        logger.info("Клиенты DeepSeek, Unsplash, S3 и Gotenberg инициализированы")
 
         yield
 
-    print("\n=== Завершение работы клиентов API ===")
+    logger.info("Клиенты API закрыты")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -236,6 +239,52 @@ async def download_site(site_id: int = FastAPIPath(description="ID сайта", 
     )
 
 
+async def create_screenshot(gotenberg_client: httpx.AsyncClient, html_code: str) -> bytes:
+    """Создаёт PNG через Gotenberg с ограниченным числом повторных попыток."""
+    screenshot_request = ScreenshotHTMLRequest(
+        index_html=html_code,
+        width=settings.gotenberg.screenshot_width,
+        format="png",
+        wait_delay=settings.gotenberg.wait_delay,
+    )
+    for attempt in range(1, GOTENBERG_MAX_ATTEMPTS + 1):
+        try:
+            return await screenshot_request.asend(gotenberg_client)
+        except httpx.HTTPError as exc:
+            if attempt == GOTENBERG_MAX_ATTEMPTS:
+                raise
+            logger.warning(
+                "Gotenberg: попытка %s/%s не удалась: %s",
+                attempt,
+                GOTENBERG_MAX_ATTEMPTS,
+                exc,
+            )
+            await asyncio.sleep(attempt * 2)
+    raise RuntimeError("Не удалось создать скриншот")
+
+
+async def stream_generated_chunks(generator, prompt: str, chunks_queue: asyncio.Queue) -> None:
+    """Передаёт сгенерированные фрагменты HTML в очередь."""
+    async for chunk in generator(prompt):
+        if isinstance(chunk, bytes):
+            chunk_bytes = chunk
+        elif isinstance(chunk, str):
+            chunk_bytes = chunk.encode()
+        else:
+            chunk_bytes = str(chunk).encode()
+
+        await chunks_queue.put(chunk_bytes)
+
+
+async def publish_generated_site(app: FastAPI, html_code: str) -> None:
+    """Создаёт скриншот и публикует HTML вместе с ним."""
+    screenshot = await create_screenshot(app.state.gotenberg_client, html_code)
+
+    # Не публикуем HTML, пока не создан скриншот.
+    await upload_screenshot_to_s3(app.state.s3_client, screenshot)
+    await upload_html_to_s3(app.state.s3_client, html_code)
+
+
 async def generate_html_in_background(
     prompt: str,
     app: FastAPI,
@@ -245,54 +294,18 @@ async def generate_html_in_background(
     generator = AsyncPageGenerator(debug_mode=settings.debug)
 
     try:
-        async for chunk in generator(prompt):
-            if isinstance(chunk, bytes):
-                chunk_bytes = chunk
-            elif isinstance(chunk, str):
-                chunk_bytes = chunk.encode()
-            else:
-                chunk_bytes = str(chunk).encode()
-
-            await chunks_queue.put(chunk_bytes)
+        await stream_generated_chunks(generator, prompt, chunks_queue)
 
         html_code = generator.html_page.html_code
-
-        await upload_html_to_s3(
-            app.state.s3_client,
-            html_code,
-        )
-        print("index.html сохранён в S3.")
-
-        screenshot_request = ScreenshotHTMLRequest(
-            index_html=html_code,
-            width=settings.gotenberg.screenshot_width,
-            format=settings.gotenberg.image_format,
-            wait_delay=settings.gotenberg.wait_delay,
-        )
-
-        screenshot = await screenshot_request.asend(
-            app.state.gotenberg_client,
-        )
-
-        await upload_screenshot_to_s3(
-            app.state.s3_client,
-            screenshot,
-        )
-
-        print("index.png сохранён в S3.")
-        print("\nГенерация сайта и скриншота завершена.")
+        await publish_generated_site(app, html_code)
 
         await chunks_queue.put(
             b"\n\n<!-- Site successfully generated and saved to S3 -->",
         )
 
-    except Exception as exc:
-        import traceback
-
-        error_msg = f"\n\nОшибка генерации: {type(exc).__name__}: {exc}\n\n{traceback.format_exc()}"
-
-        print(error_msg)
-        await chunks_queue.put(error_msg.encode())
+    except Exception:
+        logger.exception("Не удалось завершить генерацию сайта")
+        await chunks_queue.put(b"\n\n<!-- Site generation or publication failed -->")
 
     finally:
         await chunks_queue.put(None)
