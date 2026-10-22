@@ -14,3 +14,18 @@ frontend/
 /main_changes.txt
 
 /index-programspec-backup.html
+
+# Локальные прототипы
+/generate_site.py
+/s3_prototype.py
+
+# Временные файлы Python
+*.pyc
+*.pyd
+*.pyo
+
+# Настройки IDE
+.vscode/
+
+# Служебные файлы Windows
+Thumbs.db

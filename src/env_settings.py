@@ -1,12 +1,12 @@
 from typing import Literal
 
-from pydantic import Field, PositiveFloat, PositiveInt, SecretStr
+from pydantic import AnyHttpUrl, Field, PositiveFloat, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DeepSeekSettings(BaseSettings):
     api_key: SecretStr
-    base_url: str = Field(
+    base_url: AnyHttpUrl = Field(
         default="https://api.deepseek.com/v1",
         description="Базовый URL API DeepSeek",
     )
@@ -14,7 +14,7 @@ class DeepSeekSettings(BaseSettings):
         default="deepseek-chat",
         description="Название модели DeepSeek",
     )
-    max_connections: PositiveInt | None = None
+    max_connections: PositiveInt = 5
     timeout: PositiveInt = Field(
         default=30,
         description="Таймаут соединения с DeepSeek в секундах",
@@ -25,7 +25,7 @@ class DeepSeekSettings(BaseSettings):
 
 class UnsplashSettings(BaseSettings):
     api_key: SecretStr
-    max_connections: PositiveInt
+    max_connections: PositiveInt = 5
     timeout: PositiveInt = 20
 
     model_config = SettingsConfigDict(extra="forbid")
@@ -34,17 +34,17 @@ class UnsplashSettings(BaseSettings):
 class AWSSettings(BaseSettings):
     access_key: SecretStr
     secret_key: SecretStr
-    endpoint_url: str
+    endpoint_url: AnyHttpUrl
     bucket_name: str
-    connect_timeout: PositiveInt
-    read_timeout: PositiveInt
-    max_connections: PositiveInt
+    connect_timeout: PositiveInt = 5
+    read_timeout: PositiveInt = 30
+    max_connections: PositiveInt = 10
 
     model_config = SettingsConfigDict(extra="forbid")
 
 
 class GotenbergSettings(BaseSettings):
-    api_url: str
+    api_url: AnyHttpUrl
     screenshot_width: PositiveInt = 1280
     image_format: Literal["png", "jpeg", "webp"] = "png"
     max_connections: PositiveInt = 5
@@ -56,11 +56,10 @@ class GotenbergSettings(BaseSettings):
 
 class Settings(BaseSettings):
     debug: bool = False
-    secret_key: SecretStr = SecretStr("default-secret-key")
-    deepseek: DeepSeekSettings | None = None
-    unsplash: UnsplashSettings | None = None
-    aws: AWSSettings | None = None
-    gotenberg: GotenbergSettings | None = None
+    deepseek: DeepSeekSettings
+    unsplash: UnsplashSettings
+    aws: AWSSettings
+    gotenberg: GotenbergSettings
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
